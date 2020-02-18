@@ -1,0 +1,294 @@
+//******** SECTION 1 - OPTIONS **********//
+
+options {
+    JAVA_UNICODE_ESCAPE = true;
+    IGNORE_CASE = true;
+}
+
+//******** SECTION 2 - USER CODE ********//
+
+PARSER_BEGIN(CCALParser)
+
+public class CCALParser
+{
+
+    public static void main (String args[])
+    {
+
+        CCALParser parser;
+
+        if (args.length == 0) {
+
+            System.out.println ("Reading from standard input...");
+            parser = new CCALParser(System.in);
+        }
+
+	      else if (args.length == 1) {
+            try {
+                parser = new CCALParser(new java.io.FileInputStream(args[0]));
+            } catch (java.io.FileNotFoundException e) {
+                System.err.println ("File " + args[0] + " not found.");
+                return;
+            }
+        }
+	
+        else {
+            System.out.println ("CCALParser: Usage is one of:");
+            System.out.println ("java CCALParser < inputfile");
+            System.out.println ("OR");
+            System.out.println ("java CCALParser inputfile");
+            return;
+        }
+
+        try {
+
+            parser.program();
+            System.out.println ("CCAL language parsed successfully");
+            
+         }
+
+
+	      catch (ParseException e) {
+            System.out.println ("CCAL language parse error:");
+            System.out.println (e.getMessage());
+        }
+    }
+}
+
+PARSER_END(CCALParser)
+
+
+//********* SECTION 3 - TOKEN DEFINITIONS ************//
+
+TOKEN_MGR_DECLS :
+{
+    static int commentNesting = 0;
+}
+
+SKIP : /* Ignoring whitespace characters, tabs and newlines */
+{
+    " "
+  | "\t"
+  | "\n"
+  | "\r"
+  | "\f"
+}
+
+/******* skip single line comments or change to skipping multi-line comments *******/
+SKIP :
+{
+  < "//" (~["\n"])* "\n">
+  | "/*" { commentNesting++; } : IN_COMMENT
+}
+
+/******* multi-line comment skipping *******/
+<IN_COMMENT> SKIP :
+{
+  "/*" { commentNesting++;}
+  | "*/" {commentNesting--; if (commentNesting==0) SwitchTo(DEFAULT);}
+  | <~[]>
+}
+
+
+TOKEN : /* Other tokens */
+{
+	  < COMMA : "," >
+	| < SEMICOL : ";" >
+	| < COLON : ":" >
+	| < EQU : "=" >
+	| < LEFT_CURL : "{" >
+	| < RIGHT_CURL : "}" >
+	| < LEFT_BR : "(" >
+	| < RIGHT_BR : ")" >
+	| < PLUS_SIGN : "+" >
+	| < MINUS_SIGN : "-" >
+	| < LOG_NEG : "~" >
+	| < LOG_OR : "||" >
+	| < LOG_AND : "&&" >
+	| < IS_EQU : "==" >
+	| < NOT_EQU : "!=" >
+	| < LESS_THAN : "<" >
+	| < LESS_EQU : "<=" >
+	| < GREAT_THAN : ">" >
+	| < GREAT_EQU : ">=" >
+
+}
+
+TOKEN : /* Reserved Words */
+{
+	  < VAR : "var" >
+	| < CONST : "const" >
+	| < RETURN : "return" >
+	| < INT : "integer" >
+	| < BOOL : "boolean" >
+	| < VOID : "void" >
+	| < MAIN : "main" >
+	| < IF : "if" >
+	| < ELSE : "else" >
+	| < TRUE : "true" >
+	| < FALSE : "false" >
+	| < WHILE : "while" >
+	| < SKIPP : "skip" >	
+}
+
+TOKEN : /* Numbers and identifiers */
+{
+    < NUM : ("0" | (<MINUS_SIGN> ["1" - "9"] (<DIGIT>)*) | (["1" - "9"] (<DIGIT>)*)) >
+  | < #DIGIT : ["0" - "9"] >
+  | < ID : (<CHAR>) (<CHAR> | <DIGIT> | "_")* >
+  | < #CHAR : ["a" - "z"] >
+}
+
+TOKEN : /* Anything not recognised so far*/
+{
+    < OTHER : ~[] >
+}
+
+//*******************************************************************************************
+// Grammar
+
+void program() : {}
+{
+  decl_list() function_list() main() <EOF>
+}
+
+void decl_list() : {}
+{
+    (decl() <SEMICOL> decl_list())
+  | {}
+}
+
+void decl() : {}
+{
+    var_decl()
+  | const_decl() 
+}
+
+void var_decl() : {}
+{
+  <VAR> <ID> <COLON> type()
+}
+
+void const_decl() : {}
+{
+  <CONST> <ID> <COLON> type() <EQU> expression()
+}
+
+void function_list() : {}
+{
+    (function() function_list())
+  | {}
+}
+
+void function() : {}
+{
+  type() <ID> <LEFT_BR> parameter_list() <RIGHT_BR>
+  <LEFT_CURL>
+  decl_list()
+  statement_block()
+  <RETURN> <LEFT_BR> (expression() | {}) <RIGHT_BR> <SEMICOL>
+  <RIGHT_CURL>
+}
+
+void type() : {}
+{
+    <INT>
+  | <BOOL>
+  | <VOID>
+}
+
+void parameter_list() : {}
+{
+    nemp_parameter_list()
+  | {}
+}
+
+void nemp_parameter_list() : {}
+{
+    <ID> <COLON> type() (<COMMA> nemp_parameter_list() | {})
+}
+
+void main() : {}
+{
+  <MAIN><LEFT_CURL>
+  decl_list()
+  statement_block()
+  <RIGHT_CURL>
+}
+
+void statement_block() : {}
+{
+    (statement() statement_block())
+  | {}
+}
+
+void statement() : {}
+{
+    <ID> (<EQU> expression() <SEMICOL> | <LEFT_BR> arg_list() <RIGHT_BR> <SEMICOL>) 
+  | <LEFT_CURL> statement_block() <RIGHT_CURL>
+  | <IF> condition() <LEFT_CURL> statement_block() <RIGHT_CURL> <ELSE> <LEFT_CURL> statement_block() <RIGHT_CURL> 
+  | <WHILE> condition() <LEFT_CURL> statement_block() <RIGHT_CURL>
+  | <SKIPP> <SEMICOL>
+}
+
+void expression() : {}
+{
+    <LEFT_BR> expression() <RIGHT_BR> expression_nt()
+  | fragment() expression_nt()
+}
+
+void expression_nt() : {}
+{
+    binary_arith_op() fragment() expression_nt()
+  | {}
+}
+
+void binary_arith_op() : {}
+{
+    <PLUS_SIGN>
+  | <MINUS_SIGN>
+}
+
+void fragment() : {}
+{
+    (<MINUS_SIGN>)? <ID> (<LEFT_BR> arg_list() <RIGHT_BR>)?
+  | <NUM>
+  | <TRUE>
+  | <FALSE>
+}
+
+void condition() : {}
+{
+    LOOKAHEAD(3)
+    <LEFT_BR> condition() <RIGHT_BR> condition_nt()
+  | <LOG_NEG> condition() condition_nt()
+  | expression() comp_op() expression() condition_nt()
+}
+
+void condition_nt() : {}
+{
+    (<LOG_OR> | <LOG_AND>) condition() condition_nt()
+  | {}
+}
+
+void comp_op() : {}
+{
+    <IS_EQU>
+  | <NOT_EQU>
+  | <LESS_THAN>
+  | <LESS_EQU>
+  | <GREAT_THAN>
+  | <GREAT_EQU>
+}
+
+void arg_list() : {}
+{
+    nemp_arg_list()
+  | {}
+}
+
+
+void nemp_arg_list() : {}
+{
+    <ID> (<COMMA> nemp_arg_list() | {})
+}
